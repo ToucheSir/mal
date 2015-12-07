@@ -1,0 +1,21 @@
+{
+  "compilerOptions": {
+    "module": "commonjs",
+    "noImplicitAny": true,
+    "preserveConstEnums": true,
+    "sourceMap": true,
+    "target": "es6"
+  },
+  "files": [
+    "./step0_repl.ts",
+    "./step1_read_print.ts",
+    "./stepA_mal.ts",
+    "./reader.ts",
+    "./types.ts",
+    "./printer.ts",
+    "./env.ts",
+    "./core.ts",
+    "./node_readline.ts",
+    "./typings/tsd.d.ts"
+  ]
+}
