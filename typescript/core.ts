@@ -121,11 +121,27 @@ namespace seq {
 }
 
 namespace cmp {
+  function mapEquals(a: Map<string, t.MalType>, b: typeof a): boolean {
+    if (a.size !== b.size) {
+      return false;
+    }
+
+    for (const kv of a) {
+      if (!equals(b.get(kv[0]), kv[1])) {
+        return false;
+      }
+    }
+
+    return true;
+  }
+
   function equals(a: t.MalType, b: t.MalType): boolean {
     const aVal = a.value;
     const bVal = b.value;
     if (t.isSeqType(a) && t.isSeqType(b)) {
       return aVal.length === bVal.length && aVal.every((elem: t.MalType, i: number) => equals(elem, bVal[i]));
+    } else if (t.isType<t.MalHashMap>(a, 'hashmap') && t.isType<t.MalHashMap>(b, 'hashmap')) {
+      return mapEquals(aVal, bVal);
     } else if (a.typeTag === b.typeTag) {
       return aVal === bVal;
     }
