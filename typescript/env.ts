@@ -1,18 +1,18 @@
 'use strict';
-import {MalType, MalFunction, MalNumber, MalList} from './types';
+import {MalType, MalFunction, MalList} from './types';
 
 export class Env {
-  private outer: Env;
   private data: Map<symbol, MalType>;
-  constructor(outer: Env, binds?: symbol[], exprs?: MalType[]) {
+  
+  constructor(private outer: Env, binds?: symbol[], exprs?: MalType[]) {
     this.outer = outer;
     this.data = new Map();
     binds = binds || [];
     exprs = exprs || [];
 
     for (let i = 0; i < binds.length; i++) {
-      if (Symbol.keyFor(binds[i]) === '&') {
-        this.set(binds[i+1], MalList(exprs.slice(i)));
+      if (binds[i] === Symbol.for('&')) {
+        this.set(binds[i+1], exprs.slice(i));
         break;
       }
 

@@ -4,37 +4,41 @@ import {readString} from './reader';
 import {printString} from './printer';
 import {
     MalType,
-    MalSymbol,
-    MalKeyword,
-    MalString,
-    MalBool,
+    createSymbol,
+    createKeyword,
     MalFunction,
     MalList,
-    MalVector,
+    MalSeq,
+
+    createVector,
+    createMalFunction,
     MalHashMap,
     NIL,
-    FALSE,
-    isType,
-    createUnFunction,
-    isSeqType
+    isSequential,
+    isList,
+    isVector,
+    isMap,
+    isSymbol,
+    isFunction
 } from './types';
 import {Env} from './env';
 import coreNS from './core';
 import {map} from './itertools';
 
-function isPair(l: MalType): boolean {
-  return isSeqType(l) && l.value.length > 0;
+function isPair(l: MalType): l is MalList {
+  return isSequential(l) && l.length > 0;
 }
 
 function quasiquote(form: MalType): MalType {
+  const firstElem = (form as MalSeq)[0];
   if (!isPair(form)) {
-    return MalList([MalSymbol('quote'), form]);
-  } else if (form.value[0].value === Symbol.for('unquote')) {
-    return form.value[1];
-  } else if (isPair(form.value[0]) && form.value[0].value[0].value === Symbol.for('splice-unquote')) {
-    return MalList([MalSymbol('concat'), form.value[0].value[1], quasiquote(MalList(form.value.slice(1)))]);
+    return [createSymbol('quote'), form];
+  } else if (firstElem === Symbol.for('unquote')) {
+    return form[1];
+  } else if (isPair(firstElem) && firstElem[0] === Symbol.for('splice-unquote')) {
+    return [createSymbol('concat'), firstElem[1], quasiquote(form.slice(1))];
   } else {
-    return MalList([MalSymbol('cons'), quasiquote(form.value[0]), quasiquote(MalList(form.value.slice(1)))])
+    return [createSymbol('cons'), quasiquote(firstElem as MalSeq), quasiquote(form.slice(1))]
   }
 }
 
@@ -43,24 +47,26 @@ function READ(str: string) {
 }
 
 function isMacroCall(ast: MalType, env: Env): boolean {
-  if (isType<MalList>(ast, 'list')) {
-    const sym = ast.value[0] as MalSymbol;
-    const foundEnv = env.find(sym.value);
-
-    if (!foundEnv) {
-      return false;
+  if (isSequential(ast)) {
+    const sym = ast[0];
+    if (isSymbol(sym)) {
+      const foundEnv = env.find(sym);
+      if (foundEnv) {
+        const func = foundEnv.get(sym);
+        return isFunction(func) && func.isMacro;
+      }
     }
-    const func = foundEnv.get(sym.value);
-    return isType<MalFunction>(func, 'function') && func.isMacro;
   }
   return false;
 }
 
 function macroexpand(ast: MalType, env: Env): MalType {
   while (isMacroCall(ast, env)) {
-    const sym = ast.value[0] as MalSymbol;
-    const macroFunc = env.get(sym.value) as MalFunction;
-    ast = macroFunc.value(ast.value.slice(1));
+    const sym = (ast as MalSeq)[0] as symbol;
+    const macroFunc = env.get(sym) as MalFunction;
+    ast = macroFunc.fn(...(ast as MalSeq).slice(1));
+
+    console.log('expand=', printString(ast, true));
   }
 
   return ast;
@@ -68,28 +74,27 @@ function macroexpand(ast: MalType, env: Env): MalType {
 
 function EVAL(ast: MalType, env: Env): MalType {
   while (true) {
-    if (!isType<MalList>(ast, 'list')) {
+    if (isVector(ast) || !isList(ast)) {
       return evalAst(ast, env);
     } else {
       ast = macroexpand(ast, env);
-      if (!isType<MalList>(ast, 'list')) {
+      if (!isList(ast)) {
         return ast;
       }
-
-      let sym = ast.value[0];
-      const rest = ast.value.slice(1);
-      if (!isType<MalSymbol>(sym, 'symbol')) {
-        sym = MalSymbol(':default');
+      let sym = (ast as MalSeq)[0];
+      const rest = (ast as MalSeq).slice(1);
+      if (!isSymbol(sym)) {
+        sym = createSymbol(':default');
       }
 
-      switch (Symbol.keyFor(sym.value)) {
+      switch (Symbol.keyFor(sym as symbol)) {
         case 'def!':
-          const key = (rest[0] as MalSymbol).value;
+          const key = rest[0] as symbol;
           return env.set(key, EVAL(rest[1], env));
         case 'defmacro!':
           const macroFunc = EVAL(rest[1], env) as MalFunction;
           macroFunc.isMacro = true;
-          return env.set(rest[0].value, macroFunc);
+          return env.set(rest[0] as symbol, macroFunc);
         case 'macroexpand':
           return macroexpand(rest[0], env);
         case 'try*':
@@ -98,51 +103,47 @@ function EVAL(ast: MalType, env: Env): MalType {
           } catch (e) {
             const catchClause = rest[1] as MalList;
             /*            const malExcept = MalHashMap(new Map([
-             [MalKeyword('name').value, MalString(e.name)],
-             [MalKeyword('message').value, MalString(e.message)],
-             [MalKeyword('stack').value, MalString(e.stack)]
+             [MalKeyword('name'), MalString(e.name)],
+             [MalKeyword('message'), MalString(e.message)],
+             [MalKeyword('stack'), MalString(e.stack)]
              ]));*/
-            const exceptSym = catchClause.value[1] as MalSymbol;
-            const exceptVal = e instanceof Error ? MalString(e.message) : e;
-            const catchEnv = new Env(env, [exceptSym.value], [exceptVal]);
+            const exceptSym = catchClause[1] as symbol;
+            const exceptVal = e instanceof Error ? e.message : e;
+            const catchEnv = new Env(env, [exceptSym], [exceptVal]);
 
-            return EVAL(catchClause.value[2], catchEnv);
+            return EVAL(catchClause[2], catchEnv);
           }
         case 'let*':
           const letEnv = new Env(env);
-          const bindings = (rest[0] as MalList).value;
+          const bindings = (rest[0] as MalList);
           for (let i = 0; i < bindings.length; i += 2) {
             const declPair = bindings.slice(i, i + 2);
-            const identifierSym = (declPair[0] as MalSymbol).value;
+            const identifierSym = declPair[0] as symbol;
             letEnv.set(identifierSym, EVAL(declPair[1], letEnv));
           }
-          ast = rest[1];
+          ast = rest[1] as MalType;
           env = letEnv;
           break;
         case 'do':
-          evalAst(MalList(rest.slice(0, -1)), env);
-          ast = rest.pop();
+          evalAst(rest.slice(0, -1), env);
+          ast = rest[rest.length - 1];
           break;
         case 'if':
           const cond = EVAL(rest[0], env);
 
-          if (cond === NIL || cond === FALSE) {
+          if (cond === NIL || cond === false) {
             ast = rest[2] || NIL;
           } else {
             ast = rest[1];
           }
           break;
         case 'fn*':
-          const binds = (rest[0] as MalList).value.map(v => v.value);
-          const closure = MalFunction((args: MalType[]) => {
+          const binds = rest[0] as symbol[];
+          return createMalFunction((...args: MalType[]) => {
             const fnEnv = new Env(env, binds, args);
 
             return EVAL(rest[1], fnEnv);
-          });
-          closure.ast = rest[1];
-          closure.params = binds;
-          closure.env = env;
-          return closure;
+          }, rest[1], binds, env);
         case 'quote':
           return rest[0];
         case 'quasiquote':
@@ -150,33 +151,48 @@ function EVAL(ast: MalType, env: Env): MalType {
           break;
         default:
           const evaluated = evalAst(ast, env) as MalList;
-          const func = (evaluated.value[0] as MalFunction);
-          const args = evaluated.value.slice(1);
+          const func = (evaluated[0] as MalFunction);
+          const args = evaluated.slice(1);
+
+          console.log('eval=', printString(evaluated, true));
           // check if mal-hosted
+          /*          if (func && isFunction(func)) {
+           if (func.ast) {
+           ast = func.ast;
+           env = new Env(func.env, func.params, args);
+           break;
+           } else {
+           return func.fn(...args);
+           }
+           }*/
           if (!func.ast) {
-            return func.value(args);
+            return func.fn(...args);
           } else {
             ast = func.ast;
             env = new Env(func.env, func.params, args);
             break;
           }
+
+          return evaluated;
       }
     }
   }
 }
 
+function evalWithEnv(env: Env) {
+  return (exp: MalType) => EVAL(exp, env);
+}
+
 function evalAst(expr: MalType, env: Env): MalType {
-  if (isType<MalSymbol>(expr, 'symbol')) {
-    return env.get(expr.value);
-  } else if (isType<MalList>(expr, 'list')) {
-    return MalList(expr.value.map((exp) => EVAL(exp, env)));
-  } else if (isType<MalVector>(expr, 'vector')) {
-    return MalVector(expr.value.map((exp) => EVAL(exp, env)));
-  } else if (isType<MalHashMap>(expr, 'hashmap')) {
-    const mappedEntries = map(function (kv: [string, MalType]): [string, MalType] {
-      return [kv[0], EVAL(kv[1], env)];
-    }, expr.value);
-    return MalHashMap(new Map(mappedEntries));
+  if (isSymbol(expr)) {
+    return env.get(expr);
+  } else if (isVector(expr)) {
+    return createVector(expr.map<MalType>(evalWithEnv(env)));
+  } else if (isList(expr)) {
+    return expr.map<MalType>(evalWithEnv(env));
+  } else if (isMap(expr)) {
+    const mappedEntries = map((kv: [string, MalType]) => [kv[0], EVAL(kv[1], env)] as [string, MalType], expr);
+    return new Map(mappedEntries);
   } else {
     return expr;
   }
@@ -190,7 +206,7 @@ const replEnv = new Env(null);
 for (const kv of coreNS) {
   replEnv.set(kv[0], kv[1]);
 }
-replEnv.set(MalSymbol('eval').value, createUnFunction(ast => EVAL(ast, replEnv)));
+replEnv.set(createSymbol('eval'), createMalFunction(evalWithEnv(replEnv)));
 
 function rep(str: string) {
   return PRINT(EVAL(READ(str), replEnv));
@@ -223,13 +239,36 @@ rep(`
 
 rep('(def! *host-language* "typescript")');
 if (process.argv && process.argv.length > 2) {
-  replEnv.set(MalSymbol('*ARGV*').value, MalList(process.argv.slice(3).map(MalString)));
-  rep(`(load-file "${process.argv[2]}")`);
+  replEnv.set(createSymbol('*ARGV*'), process.argv.slice(3));
+  //rep(`(load-file "${process.argv[2]}")`);
 }
 
-rep('(def! a (atom 2))');
-rep('(def! inc3 (fn* (a) (+ 3 a)))');
-rep('(swap! a inc3)');
+//rep('(map? (with-meta {"abc" 123} {"a" 1}))');
+rep(`
+(def! eval-ast (fn* [ast env] (do
+  (do (prn "eval-ast" ast "/" (keys env)) )
+  (cond
+    (symbol? ast) (or (get env (str ast))
+                      (throw (str ast " asdf not found")))
+
+    (list? ast)   (map (fn* [exp] (EVAL exp env)) ast)
+
+    (vector? ast) (apply vector (map (fn* [exp] (EVAL exp env)) ast))
+
+    (map? ast)    (apply hash-map
+                      (apply concat
+                        (map (fn* [k] [k (EVAL (get ast k) env)])
+                             (keys ast))))
+
+    "else"        ast))))
+`);
+rep(`
+(def! repl-env {"+" +
+                "-" -
+                "*" *
+                "/" /})
+`);
+rep(`(eval-ast [1] repl-env)`);
 const running = true;
 while (running) {
   const line = readline('user> ');
@@ -238,4 +277,5 @@ while (running) {
   } catch (err) {
     console.log(err.message);
   }
+
 }

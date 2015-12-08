@@ -1,5 +1,16 @@
 'use strict';
-import {MalType, MalList, MalNumber, MalSymbol, MalString, MalBool, NIL, MalKeyword, MalVector, MalHashMap} from './types';
+import {
+    MalType,
+    NIL,
+    MalHashMap,
+    MalList,
+    MalVector,
+    createSymbol,
+    createVector,
+    isString,
+    mapKeyFromString
+} from './types';
+import {createKeyword} from "./types";
 
 export function readString(str: string) {
   return readForm(new Reader(tokenizer(str)));
@@ -76,11 +87,11 @@ function readForm(reader: Reader): MalType {
     case '~':
     case '~@':
     case '@':
-      return MalList([READER_MAPPINGS[reader.next()], readForm(reader)]);
+      return [READER_MAPPINGS[reader.next()], readForm(reader)];
     case '^':
       const metaSym = READER_MAPPINGS[reader.next()];
       const meta = readForm(reader);
-      return MalList([metaSym, readForm(reader), meta]);
+      return [metaSym, readForm(reader), meta];
     default:
       return readAtom(reader);
   }
@@ -96,7 +107,7 @@ function readVector(reader: Reader): MalVector {
 
   if (!reader.eof() && reader.peek() === ']') {
     reader.next();
-    return MalVector(vec);
+    return createVector(vec);
   }
 
   throw new Error('expected \']\', got EOF');
@@ -110,26 +121,26 @@ function readHashMap(reader: Reader): MalHashMap {
     const key = readForm(reader);
     const value = readForm(reader);
 
-    if (key.typeTag === 'keyword' || key.typeTag === 'string') {
-      res.set((key as MalKeyword|MalString).value, value);
+    if (isString(key)) {
+      res.set(key, value);
     }
   }
 
   if (!reader.eof() && reader.peek() === '}') {
     reader.next();
-    return MalHashMap(res);
+    return res;
   }
 
   throw new Error('expected \'}\', got EOF');
 }
 
-const READER_MAPPINGS: {[key: string]: MalSymbol} = {
-  '\'': MalSymbol('quote'),
-  '`': MalSymbol('quasiquote'),
-  '~': MalSymbol('unquote'),
-  '~@': MalSymbol('splice-unquote'),
-  '^': MalSymbol('with-meta'),
-  '@': MalSymbol('deref')
+const READER_MAPPINGS: {[key: string]: symbol} = {
+  '\'': createSymbol('quote'),
+  '`': createSymbol('quasiquote'),
+  '~': createSymbol('unquote'),
+  '~@': createSymbol('splice-unquote'),
+  '^': createSymbol('with-meta'),
+  '@': createSymbol('deref')
 };
 
 function readList(reader: Reader): MalList {
@@ -142,7 +153,7 @@ function readList(reader: Reader): MalList {
 
   if (!reader.eof() && reader.peek() === ')') {
     reader.next();
-    return MalList(list);
+    return list;
   }
 
   throw new Error('expected \')\', got EOF');
@@ -152,23 +163,22 @@ function readAtom(reader: Reader): MalType {
   const token = reader.next().trim();
 
   if (isNumericString(token)) {
-    return MalNumber(parseInt(token));
+    return parseInt(token);
   } else if (token[0] === '"') {
-    return MalString(token.slice(1, -1).replace(/\\"/g, '"').replace(/\\n/g, '\n').replace(/\\\\/g, '\\'));
+    return token.slice(1, -1).replace(/\\"/g, '"').replace(/\\n/g, '\n').replace(/\\\\/g, '\\');
   } else if (token === 'true' || token === 'false') {
-    return MalBool(token === 'true');
+    return token === 'true';
   } else if (token === 'nil') {
     return NIL;
   } else if (token[0] === ':') {
-    return MalKeyword(token.slice(1));
+    return createKeyword(token.slice(1));
   }
 
-  return MalSymbol(token);
+  return createSymbol(token);
 }
 
 function isNumericString(n: string) {
   const asNum = parseInt(n);
-
   return !Number.isNaN(asNum) && Number.isSafeInteger(asNum);
 }
 

@@ -2,114 +2,102 @@
 import {Env} from './env.ts';
 
 export const MAL_META = Symbol('mal.has-meta');
+export const IS_VECTOR = Symbol('mal.is-vector');
+export const KEYWORD_PREFIX = '\u029e';
 
-export interface IMalType<T> {
-  typeTag: string;
-  value: T
-}
-export type MalType = IMalType<any>;
+export type MalType = number|string|boolean|symbol|MalFunction|MalSeq|MalMap|MalAtom;
+
+export const NIL: MalType = null;
 
 export interface HasMeta {
   //meta?: MalType;
 }
 
-export interface MalSeq extends IMalType<MalType[]>, HasMeta {
+export interface MalSeq extends Array<MalType>, HasMeta {
+
 }
 export interface MalList extends MalSeq {
 }
 export interface MalVector extends MalSeq {
 }
 
-export interface MalHashMap extends IMalType<Map<string, MalType>>, HasMeta {
+export interface MalMap extends Map<string, MalType>, HasMeta {
+}
+export interface MalHashMap extends MalMap {
+
 }
 
-export interface MalNumber extends IMalType<number> {
-}
-
-export interface MalSymbol extends IMalType<symbol>, HasMeta {
-}
-
-export const NIL: MalType = {typeTag: 'nil', value: null};
-
-export interface MalString extends IMalType<string> {
-}
-export interface MalKeyword extends IMalType<string> {
-}
-
-export interface MalBool extends IMalType<boolean> {
-}
-
-export interface MalFunction extends IMalType<(args: MalType[]) => MalType> {
+export interface MalFunction extends HasMeta {
+  fn: (...args: MalType[]) => MalType;
   ast?: MalType;
-  params?: symbol[];
   env?: Env;
+  params?: symbol[];
   isMacro: boolean;
 }
-
-export interface MalAtom extends IMalType<MalType> {
+export function createMalFunction(fn: (...args: MalType[]) => MalType, ast?: MalType, params?: symbol[], env?: Env) {
+  return {
+    fn, ast, params, env,
+    isMacro: false
+  };
 }
 
-export function isType<T extends MalType>(m: MalType, typeStr: string): m is T {
-  return m.typeTag === typeStr;
+export interface MalAtom {
+  value: MalType;
 }
 
-export function isSeqType(m: MalType): m is MalSeq {
-  return m.typeTag === 'vector' || m.typeTag === 'list';
+export function isNumber(m: MalType): m is number {
+  return typeof m === 'number';
 }
-export function MalNumber(n: number): MalNumber {
-  return {typeTag: 'number', value: n};
+export function isString(m: MalType): m is string {
+  return typeof m === 'string';
 }
-
-export function MalSymbol(str: string): MalSymbol {
-  return {typeTag: 'symbol', value: Symbol.for(str)};
+export function isKeyword(m: MalType): m is string {
+  return isString(m) && m[0] === KEYWORD_PREFIX;
 }
-
-export function MalString(str: string): MalString {
-  return {typeTag: 'string', value: str};
-}
-
-export const TRUE = {typeTag: 'bool', value: true};
-export const FALSE = {typeTag: 'bool', value: false};
-export function MalBool(bool: boolean): MalBool {
-  return bool ? TRUE : FALSE;
+export function mapKeyFromString(s: string): string {
+  console.log(s);
+  return s[0] === ':' ? createKeyword(s.slice(1)) : s;
 }
 
-export function MalList(arr: MalType[]): MalList {
-  return {typeTag: 'list', value: arr};
+export function isBoolean(m: MalType): m is boolean {
+  return typeof m === 'boolean';
+}
+export function isSymbol(m: MalType): m is symbol {
+  return typeof m === 'symbol';
+}
+export function isFunction(m: MalType): m is MalFunction {
+  return m.hasOwnProperty('fn');
+}
+export function isMap(m: MalType): m is MalMap {
+  return m instanceof Map;
+}
+export function isSequential(m: MalType): m is MalSeq {
+  return Array.isArray(m);
+}
+export function isList(m: MalType): m is MalList {
+  return Array.isArray(m);
 }
 
-export function MalVector(arr: MalType[]): MalVector {
-  return {typeTag: 'vector', value: arr};
+export function isVector(m: MalType): m is MalVector {
+  return isSequential(m) && (m as any)[IS_VECTOR] === true;
+}
+export function isAtom(m: MalType): m is MalAtom {
+  return m.hasOwnProperty('value');
+}
+export function createAtom(val: MalType): MalAtom {
+  return {value: val};
 }
 
-export function MalHashMap(map: Map<string, MalType>): MalHashMap {
-  return {typeTag: 'hashmap', value: map};
+export function createSymbol(s: string): symbol {
+  return Symbol.for(s);
 }
-export function mapKeyFromString(k: string): MalString|MalKeyword {
-  return k[0] === KEYWORD_PREFIX ? MalKeyword(k.slice(1)) : MalString(k);
-}
-
-export const KEYWORD_PREFIX = '\u029E';
-
-export function MalKeyword(str: string): MalKeyword {
-  return {typeTag: 'keyword', value: KEYWORD_PREFIX + str};
+export function createVector(l: MalSeq) {
+  const res = l.slice();
+  (res as any)[IS_VECTOR] = true;
+  return res;
 }
 
-export function MalFunction(fn: (args: MalType[]) => MalType): MalFunction {
-  return {typeTag: 'function', value: fn, isMacro: false};
-}
-
-export function MalAtom(val: MalType): MalAtom {
-  return {typeTag: 'atom', value: val};
-}
-
-export function createUnFunction<T1 extends MalType, R extends MalType>
-(fn: (a1: T1) => R): MalFunction {
-  return MalFunction((args: MalType[]) => fn(args[0] as T1));
-}
-
-export function createBinFunction<T1 extends MalType, T2 extends MalType, R extends MalType>
-(fn: (a1: T1, a2: T2) => R): MalFunction {
-  return MalFunction((args: MalType[]) => fn(args[0] as T1, args[1] as T2));
+export function createKeyword(s: string) {
+  return KEYWORD_PREFIX + s;
 }
 

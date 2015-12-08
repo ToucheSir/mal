@@ -166,7 +166,7 @@ vimscript_RUNSTEP = ./run_vimscript.sh ../$(2) $(3)
 guile_RUNSTEP =   guile --no-auto-compile -L ../guile ../$(2) $(3)
 
 #
-typescript_RUNSTEP = node ../$(2) $(3)
+typescript_RUNSTEP = node --harmony ../$(2) $(3)
 #
 
 

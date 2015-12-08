@@ -1,123 +1,118 @@
-import {MalSeq} from "./types";
 'use strict';
 import * as t from './types';
-import {Env} from "./env";
-import {printString} from "./printer";
-import {readString} from "./reader";
+import {readline} from './node_readline';
+import {printString} from './printer';
+import {readString} from './reader';
 import {readFileSync} from 'fs';
-import {readline} from "./node_readline";
-import {isType} from "./types";
+import {HasMeta} from "./types";
+
 
 const coreNS: Map<symbol, t.MalFunction> = new Map();
 
-function addCoreFn(name: string, fn: (args: t.MalType[]) => t.MalType) {
-  coreNS.set(Symbol.for(name), t.MalFunction(fn));
-}
-function addCoreFnMal(name: string, fn: t.MalFunction) {
-  coreNS.set(Symbol.for(name), fn);
+function addCoreFn(name: string, fn: (...args: t.MalType[]) => t.MalType) {
+  coreNS.set(t.createSymbol(name), t.createMalFunction(fn));
 }
 
 namespace math {
-  function ADD(a: t.MalNumber, b: t.MalNumber): t.MalNumber {
-    return t.MalNumber(a.value + b.value);
-  }
-  function SUB(a: t.MalNumber, b: t.MalNumber): t.MalNumber {
-    return t.MalNumber(a.value - b.value);
-  }
-  function MUL(a: t.MalNumber, b: t.MalNumber): t.MalNumber {
-    return t.MalNumber(a.value * b.value);
-  }
-  function DIV(a: t.MalNumber, b: t.MalNumber): t.MalNumber {
-    return t.MalNumber(a.value / b.value);
+  function ADD(a: number, b: number): number {
+    return a + b;
   }
 
-  addCoreFnMal('+', t.createBinFunction(ADD));
-  addCoreFnMal('-', t.createBinFunction(SUB));
-  addCoreFnMal('*', t.createBinFunction(MUL));
-  addCoreFnMal('/', t.createBinFunction(DIV));
+  function SUB(a: number, b: number): number {
+    return a - b;
+  }
+
+  function MUL(a: number, b: number): number {
+    return a * b;
+  }
+
+  function DIV(a: number, b: number): number {
+    return a / b;
+  }
+
+  addCoreFn('+', ADD);
+  addCoreFn('-', SUB);
+  addCoreFn('*', MUL);
+  addCoreFn('/', DIV);
 }
 
 namespace seq {
-  function isList(a: t.MalType): t.MalBool {
-    return t.MalBool(t.isType(a, 'list'));
+  function isEmpty(l: t.MalList): boolean {
+    return l.length === 0;
   }
-  function isEmpty(l: t.MalList): t.MalBool {
-    return t.MalBool(l.value.length === 0);
-  }
-  function count(l: t.MalList): t.MalNumber {
-    return t.MalNumber(l === t.NIL ? 0 : l.value.length);
+
+  function count(l: t.MalList): number {
+    return l === t.NIL ? 0 : l.length;
   }
 
   function cons(a: t.MalType, l: t.MalSeq): t.MalList {
-    return t.MalList([a].concat(l.value));
+    return [a].concat(l);
   }
-  function conj(args: t.MalType[]): t.MalSeq {
-    const l = args[0] as t.MalSeq;
-    const rest = args.slice(1);
-    if (isType(l, 'vector')) {
-      return t.MalVector(l.value.concat(rest));
+
+  function conj(l: t.MalSeq, ...args: t.MalType[]): t.MalSeq {
+    if (t.isVector(l)) {
+      return t.createVector(l.concat(args));
     }
 
-    const res: MalSeq = {
-      typeTag: l.typeTag,
-      value: l.value.slice()
-    };
-    for (const val of rest) {
-      res.value.unshift(val);
+    const res = l.slice();
+    for (const val of args) {
+      res.unshift(val);
     }
     return res;
   }
-  function concat(args: t.MalSeq[]): t.MalList {
-    return t.MalList(args.reduce((acc, l) => acc.concat(l.value), []));
+
+  function concat(...args: t.MalSeq[]): t.MalList {
+    console.log('args in concat=', args)
+    return args.reduce((acc, l) => acc.concat(l), []);
   }
 
-  function nth(seq: t.MalSeq, index: t.MalNumber): t.MalType {
-    const s = seq.value;
-    const i = index.value;
+  function nth(seq: t.MalSeq, index: number): t.MalType {
+    const s = seq;
+    const i = index;
 
     if (i < 0 || i >= s.length) {
       throw new Error(`index ${i} out of range`);
     }
     return s[i];
   }
-  function first(seq: t.MalSeq): t.MalList {
-    return seq.value.length === 0 ? t.NIL : seq.value[0];
-  }
-  function rest(seq: t.MalSeq): t.MalList {
-    return t.MalList(seq.value.slice(1));
+
+  function first(...seq: t.MalType[]): t.MalType {
+    return seq.length === 0 ? t.NIL : seq[0];
   }
 
-  function apply(args: t.MalType[]): t.MalType {
-    const a = args.slice();
-    const func = a.shift() as t.MalFunction;
-    const last = a.pop() as t.MalSeq;
-
-    return func.value(a.concat(last.value));
-  }
-  function map(fn: t.MalFunction, seq: t.MalSeq): t.MalList {
-    return t.MalList(seq.value.map(v => fn.value([v])));
+  function rest(...seq: t.MalType[]): t.MalList {
+    return seq.slice(1);
   }
 
-  addCoreFn('list', t.MalList);
-  addCoreFnMal('list?', t.createUnFunction(isList));
-  addCoreFn('vector', t.MalVector);
-  addCoreFnMal('vector?', t.createUnFunction(x => t.MalBool(t.isType(x, 'vector'))));
+  function apply(func: t.MalFunction, ...args: t.MalType[]): t.MalType {
+    const last = args[args.length - 1];
+    return func.fn(...args.slice(0, -1).concat(last));
+  }
 
-  addCoreFnMal('empty?', t.createUnFunction(isEmpty));
-  addCoreFnMal('count', t.createUnFunction(count));
+  function map(func: t.MalFunction, seq: t.MalSeq): t.MalList {
+    return seq.map<t.MalType>(v => func.fn(v));
+  }
 
-  addCoreFnMal('cons', t.createBinFunction(cons));
+  addCoreFn('list', (...args) => args);
+  addCoreFn('list?', t.isList);
+  addCoreFn('vector', t.createVector);
+  addCoreFn('vector?', t.isVector);
+
+  addCoreFn('empty?', isEmpty);
+  addCoreFn('count', count);
+
+  addCoreFn('cons', cons);
   addCoreFn('conj', conj);
   addCoreFn('concat', concat);
 
-  addCoreFnMal('nth', t.createBinFunction(nth));
-  addCoreFnMal('first', t.createUnFunction(first));
-  addCoreFnMal('rest', t.createUnFunction(rest));
+  addCoreFn('nth', nth);
+  addCoreFn('first', first);
+  addCoreFn('rest', rest);
 
   addCoreFn('apply', apply);
-  addCoreFnMal('map', t.createBinFunction(map));
+  addCoreFn('map', map);
 
-  addCoreFnMal('sequential?', t.createUnFunction(x => t.MalBool(t.isSeqType(x))));
+  addCoreFn('sequential?', t.isSequential);
 }
 
 namespace cmp {
@@ -136,57 +131,61 @@ namespace cmp {
   }
 
   function equals(a: t.MalType, b: t.MalType): boolean {
-    const aVal = a.value;
-    const bVal = b.value;
-    if (t.isSeqType(a) && t.isSeqType(b)) {
-      return aVal.length === bVal.length && aVal.every((elem: t.MalType, i: number) => equals(elem, bVal[i]));
-    } else if (t.isType<t.MalHashMap>(a, 'hashmap') && t.isType<t.MalHashMap>(b, 'hashmap')) {
-      return mapEquals(aVal, bVal);
-    } else if (a.typeTag === b.typeTag) {
-      return aVal === bVal;
+    if (t.isSequential(a) && t.isSequential(b)) {
+      return a.length === b.length && a.every((elem: t.MalType, i: number) => equals(elem, b[i]));
+    } else if (t.isMap(a) && t.isMap(b)) {
+      return mapEquals(a, b);
+    } else if (typeof a === typeof b) {
+      return a === b;
     }
 
     return false;
   }
 
-  function ge(a: t.MalNumber, b: t.MalNumber): t.MalBool {
-    return t.MalBool(a.value >= b.value);
-  }
-  function le(a: t.MalNumber, b: t.MalNumber): t.MalBool {
-    return t.MalBool(a.value <= b.value);
-  }
-  function gt(a: t.MalNumber, b: t.MalNumber): t.MalBool {
-    return t.MalBool(a.value > b.value);
-  }
-  function lt(a: t.MalNumber, b: t.MalNumber): t.MalBool {
-    return t.MalBool(a.value < b.value);
+  function ge(a: number, b: number): boolean {
+    return a >= b;
   }
 
-  addCoreFnMal('=', t.createBinFunction((a, b) => t.MalBool(equals(a, b))));
-  addCoreFnMal('<', t.createBinFunction(lt));
-  addCoreFnMal('<=', t.createBinFunction(le));
-  addCoreFnMal('>', t.createBinFunction(gt));
-  addCoreFnMal('>=', t.createBinFunction(ge));
+  function le(a: number, b: number): boolean {
+    return a <= b;
+  }
+
+  function gt(a: number, b: number): boolean {
+    return a > b;
+  }
+
+  function lt(a: number, b: number): boolean {
+    return a < b;
+  }
+
+  addCoreFn('=', equals);
+  addCoreFn('<', lt);
+  addCoreFn('<=', le);
+  addCoreFn('>', gt);
+  addCoreFn('>=', ge);
 }
 
 namespace io {
-  function prStr(args: t.MalType[]): t.MalString {
-    return t.MalString(args.map(x => printString(x, true)).join(' '));
+  function prStr(...args: t.MalType[]): string {
+    return args.map<string>(x => printString(x, true)).join(' ');
   }
-  function str(args: t.MalType[]): t.MalString {
-    return t.MalString(args.map(x => printString(x, false)).join(''));
+
+  function str(...args: t.MalType[]): string {
+    return args.map<string>(x => printString(x, false)).join('');
   }
-  function prn(args: t.MalType[]) {
-    console.log(prStr(args).value);
-    return t.NIL;
-  }
-  function println(args: t.MalType[]) {
-    console.log(args.map(x => printString(x, false)).join(' '));
+
+  function prn(...args: t.MalType[]) {
+    console.log(prStr(args));
     return t.NIL;
   }
 
-  function slurp(fileName: t.MalString): t.MalString {
-    return t.MalString(readFileSync(fileName.value, 'utf-8'));
+  function println(...args: t.MalType[]) {
+    console.log(args.map<string>(x => printString(x, false)).join(' '));
+    return t.NIL;
+  }
+
+  function slurp(fileName: string): string {
+    return readFileSync(fileName, 'utf-8');
   }
 
   addCoreFn('pr-str', prStr);
@@ -194,8 +193,8 @@ namespace io {
   addCoreFn('prn', prn);
   addCoreFn('println', println);
 
-  addCoreFnMal('read-string', t.createUnFunction(str => readString(str.value)));
-  addCoreFnMal('slurp', t.createUnFunction(slurp));
+  addCoreFn('read-string', readString);
+  addCoreFn('slurp', slurp);
 }
 
 namespace err {
@@ -203,73 +202,95 @@ namespace err {
     throw e;
   }
 
-  addCoreFnMal('throw', t.createUnFunction(throwErr));
+  addCoreFn('throw', throwErr);
 }
 
 namespace map {
-  function toMap(args: t.MalType[]): t.MalHashMap {
-    const res: Map<string, t.MalType> = new Map();
+  function toMap(...args: t.MalType[]): t.MalHashMap {
+    const res: t.MalMap = new Map();
 
     for (let i = 0; i < args.length - 1; i += 2) {
-      res.set(args[i].value as string, args[i + 1]);
+      res.set(args[i] as string, args[i + 1]);
     }
-
-    return t.MalHashMap(res);
-  }
-  function assoc(args: t.MalType[]): t.MalHashMap {
-    const res = new Map((args[0] as t.MalHashMap).value.entries());
-
-    for (let i = 1; i < args.length - 1; i += 2) {
-      res.set(args[i].value as string, args[i + 1]);
-    }
-
-    return t.MalHashMap(res);
-  }
-  function dissoc(args: t.MalType[]): t.MalHashMap {
-    const res = new Map((args[0] as t.MalHashMap).value.entries());
-
-    for (let i = 1; i < args.length; i++) {
-      res.delete((args[i] as t.MalString|t.MalKeyword).value);
-    }
-
-    return t.MalHashMap(res);
-  }
-  function getFrom(m: t.MalType, k: t.MalString|t.MalKeyword): t.MalType {
-    return t.isType<t.MalHashMap>(m, 'hashmap') && m.value.has(k.value) ? m.value.get(k.value) : t.NIL;
-  }
-  function containsKey(m: t.MalHashMap, k: t.MalString|t.MalKeyword): t.MalBool {
-    return t.MalBool(m.value.has(k.value));
-  }
-  function keys(m: t.MalHashMap): t.MalList {
-    return t.MalList(Array.from(m.value.keys()).map(t.mapKeyFromString));
-  }
-  function vals(m: t.MalHashMap): t.MalList {
-    return t.MalList(Array.from(m.value.values()));
-  }
-
-  addCoreFn('hash-map', toMap);
-  addCoreFnMal('map?', t.createUnFunction(x => t.MalBool(t.isType(x, 'hashmap'))));
-  addCoreFn('assoc', assoc);
-  addCoreFn('dissoc', dissoc);
-  addCoreFnMal('get', t.createBinFunction(getFrom));
-  addCoreFnMal('contains?', t.createBinFunction(containsKey));
-  addCoreFnMal('keys', t.createUnFunction(keys));
-  addCoreFnMal('vals', t.createUnFunction(vals));
-}
-
-namespace meta {
-  function withMeta(obj: t.HasMeta & t.MalType, meta: t.MalType): t.HasMeta & t.MalType {
-    const res: any = Object.assign({}, obj);
-    res[t.MAL_META] = meta;
 
     return res;
   }
+
+  function assoc(...args: t.MalType[]): t.MalHashMap {
+    const res = new Map((args[0] as t.MalMap).entries());
+
+    for (let i = 1; i < args.length - 1; i += 2) {
+      res.set(args[i] as string, args[i + 1]);
+    }
+
+    return res;
+  }
+
+  function dissoc(...args: t.MalType[]): t.MalHashMap {
+    const res = new Map((args[0] as t.MalMap).entries());
+
+    for (let i = 1; i < args.length; i++) {
+      res.delete(args[i] as string);
+    }
+
+    return res;
+  }
+
+  function getFrom(m: t.MalType, k: string): t.MalType {
+    return t.isMap(m) && m.has(k) ? m.get(k) : t.NIL;
+  }
+
+  function containsKey(m: t.MalHashMap, k: string): boolean {
+    return m.has(k);
+  }
+
+  function keys(m: t.MalHashMap): t.MalSeq {
+    return Array.from(m.keys());
+  }
+
+  function vals(m: t.MalHashMap): t.MalSeq {
+    return Array.from(m.values());
+  }
+
+  addCoreFn('hash-map', toMap);
+  addCoreFn('map?', t.isMap);
+  addCoreFn('assoc', assoc);
+  addCoreFn('dissoc', dissoc);
+  addCoreFn('get', getFrom);
+  addCoreFn('contains?', containsKey);
+  addCoreFn('keys', keys);
+  addCoreFn('vals', vals);
+}
+
+namespace meta {
+  function cloneObj<T>(o: T|T[]|Map<string, T>): typeof o {
+    if (typeof o !== 'object') {
+      return o;
+    }
+    const res = Array.isArray(o) ?
+        o.slice() : o instanceof Map ?
+        new Map(o.entries()) :
+        Object.assign({}, o);
+    for (const sym of Object.getOwnPropertySymbols(o)) {
+      (<any>res)[sym] = (<any>o)[sym];
+    }
+
+    return res;
+  }
+
+  function withMeta(obj: t.HasMeta & t.MalType, meta: t.MalType): t.HasMeta & t.MalType {
+    const res = cloneObj(obj);
+    (res as any)[t.MAL_META] = meta;
+
+    return res;
+  }
+
   function meta(obj: t.HasMeta): t.MalType {
     return (obj as any)[t.MAL_META] || t.NIL as t.MalType;
   }
 
-  addCoreFnMal('with-meta', t.createBinFunction(withMeta));
-  addCoreFnMal('meta', t.createUnFunction(meta));
+  addCoreFn('with-meta', withMeta);
+  addCoreFn('meta', meta);
 }
 
 namespace atom {
@@ -277,30 +298,28 @@ namespace atom {
     a.value = val;
     return val;
   }
-  function swap(args: t.MalType[]): t.MalType {
-    const a = args[0];
-    const func = args[1].value;
-    const rest = args.slice(2);
-    return reset(a, func([a.value].concat(rest)));
+
+  function swap(a: t.MalAtom, f: t.MalFunction, ...args: t.MalType[]): t.MalType {
+    return reset(a, f.fn(a.value, ...args));
   }
 
-  addCoreFnMal('atom', t.createUnFunction(t.MalAtom));
-  addCoreFnMal('atom?', t.createUnFunction(x => t.MalBool(t.isType(x, 'atom'))));
-  addCoreFnMal('deref', t.createUnFunction((x: t.MalAtom) => x.value));
-  addCoreFnMal('reset!', t.createBinFunction(reset));
+  addCoreFn('atom', t.createAtom);
+  addCoreFn('atom?', t.isAtom);
+  addCoreFn('deref', (x: t.MalAtom) => x.value);
+  addCoreFn('reset!', reset);
   addCoreFn('swap!', swap);
 }
 
-addCoreFnMal('nil?', t.createUnFunction(x => t.MalBool(x === t.NIL)));
-addCoreFnMal('true?', t.createUnFunction(x => t.MalBool(x === t.TRUE)));
-addCoreFnMal('false?', t.createUnFunction(x => t.MalBool(x === t.FALSE)));
+addCoreFn('nil?', x => x === t.NIL);
+addCoreFn('true?', x => x === true);
+addCoreFn('false?', x => x === false);
 
-addCoreFnMal('symbol', t.createUnFunction(s => t.MalSymbol(s.value)));
-addCoreFnMal('symbol?', t.createUnFunction(x => t.MalBool(t.isType(x, 'symbol'))));
+addCoreFn('symbol', t.createSymbol);
+addCoreFn('symbol?', t.isSymbol);
 
-addCoreFnMal('keyword', t.createUnFunction(kw => t.isType(kw, 'keyword') ? kw : t.MalKeyword(kw.value)));
-addCoreFnMal('keyword?', t.createUnFunction(x => t.MalBool(t.isType(x, 'keyword'))));
+addCoreFn('keyword', t.createKeyword);
+addCoreFn('keyword?', t.isKeyword);
 
-addCoreFnMal('readline', t.createUnFunction(s => t.MalString(readline(s.value))));
+addCoreFn('readline', readline);
 
 export default coreNS;
