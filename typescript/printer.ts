@@ -51,12 +51,6 @@ export function printString(obj: MalType, readable?: boolean): string {
     return String(obj);
   } else if (isSymbol(obj)) {
     return Symbol.keyFor(obj);
-  } else if (isVector(obj)) {
-    return printSeq(obj, VECTOR_BRACES, !!readable);
-  } else if (isList(obj)) {
-    return printSeq(obj, LIST_BRACES, !!readable);
-  } else if (obj === NIL) {
-    return 'nil';
   } else if (isString(obj)) {
     if (isKeyword(obj)) {
       return ':' + obj.slice(1);
@@ -66,6 +60,12 @@ export function printString(obj: MalType, readable?: boolean): string {
       return `"${malEscapeStr(obj)}"`;
     }
     return obj;
+  } else if (isVector(obj)) {
+    return printSeq(obj, VECTOR_BRACES, !!readable);
+  } else if (isList(obj)) {
+    return printSeq(obj, LIST_BRACES, !!readable);
+  } else if (obj === NIL) {
+    return 'nil';
   } else if (isMap(obj)) {
     return printHashMap(obj, !!readable);
   } else if (isFunction(obj)) {

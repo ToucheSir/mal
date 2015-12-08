@@ -107,7 +107,7 @@ function readVector(reader: Reader): MalVector {
 
   if (!reader.eof() && reader.peek() === ']') {
     reader.next();
-    return createVector(vec);
+    return createVector(...vec);
   }
 
   throw new Error('expected \']\', got EOF');

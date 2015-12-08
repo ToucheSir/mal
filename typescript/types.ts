@@ -75,7 +75,7 @@ export function isSequential(m: MalType): m is MalSeq {
   return Array.isArray(m);
 }
 export function isList(m: MalType): m is MalList {
-  return Array.isArray(m);
+  return Array.isArray(m) && !isString(m) && !isVector(m);
 }
 
 export function isVector(m: MalType): m is MalVector {
@@ -91,7 +91,7 @@ export function createAtom(val: MalType): MalAtom {
 export function createSymbol(s: string): symbol {
   return Symbol.for(s);
 }
-export function createVector(l: MalSeq) {
+export function createVector(...l: MalType[]) {
   const res = l.slice();
   (res as any)[IS_VECTOR] = true;
   return res;

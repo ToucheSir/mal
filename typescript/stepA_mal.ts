@@ -64,9 +64,9 @@ function macroexpand(ast: MalType, env: Env): MalType {
   while (isMacroCall(ast, env)) {
     const sym = (ast as MalSeq)[0] as symbol;
     const macroFunc = env.get(sym) as MalFunction;
+    //console.log('before:expand=', printString(ast, true));
     ast = macroFunc.fn(...(ast as MalSeq).slice(1));
-
-    console.log('expand=', printString(ast, true));
+    //console.log('after:expand=', printString(ast, true));
   }
 
   return ast;
@@ -154,7 +154,8 @@ function EVAL(ast: MalType, env: Env): MalType {
           const func = (evaluated[0] as MalFunction);
           const args = evaluated.slice(1);
 
-          console.log('eval=', printString(evaluated, true));
+          //console.log('before:eval=', printString(ast, true));
+          //console.log('after:eval=', printString(evaluated, true));
           // check if mal-hosted
           /*          if (func && isFunction(func)) {
            if (func.ast) {
@@ -187,7 +188,7 @@ function evalAst(expr: MalType, env: Env): MalType {
   if (isSymbol(expr)) {
     return env.get(expr);
   } else if (isVector(expr)) {
-    return createVector(expr.map<MalType>(evalWithEnv(env)));
+    return createVector(...expr.map<MalType>(evalWithEnv(env)));
   } else if (isList(expr)) {
     return expr.map<MalType>(evalWithEnv(env));
   } else if (isMap(expr)) {
@@ -238,18 +239,20 @@ rep(`
 `);
 
 rep('(def! *host-language* "typescript")');
+
 if (process.argv && process.argv.length > 2) {
   replEnv.set(createSymbol('*ARGV*'), process.argv.slice(3));
-  //rep(`(load-file "${process.argv[2]}")`);
+  rep(`(load-file "${process.argv[2]}")`);
 }
 
 //rep('(map? (with-meta {"abc" 123} {"a" 1}))');
+/*
 rep(`
 (def! eval-ast (fn* [ast env] (do
-  (do (prn "eval-ast" ast "/" (keys env)) )
+  ;;(do (prn "eval-ast" ast "/" (keys env)) )
   (cond
     (symbol? ast) (or (get env (str ast))
-                      (throw (str ast " asdf not found")))
+                      (throw (str ast " not found")))
 
     (list? ast)   (map (fn* [exp] (EVAL exp env)) ast)
 
@@ -269,6 +272,8 @@ rep(`
                 "/" /})
 `);
 rep(`(eval-ast [1] repl-env)`);
+*/
+
 const running = true;
 while (running) {
   const line = readline('user> ');

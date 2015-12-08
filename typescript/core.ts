@@ -51,7 +51,7 @@ namespace seq {
 
   function conj(l: t.MalSeq, ...args: t.MalType[]): t.MalSeq {
     if (t.isVector(l)) {
-      return t.createVector(l.concat(args));
+      return t.createVector(...l, ...args);
     }
 
     const res = l.slice();
@@ -62,7 +62,6 @@ namespace seq {
   }
 
   function concat(...args: t.MalSeq[]): t.MalList {
-    console.log('args in concat=', args)
     return args.reduce((acc, l) => acc.concat(l), []);
   }
 
@@ -76,11 +75,11 @@ namespace seq {
     return s[i];
   }
 
-  function first(...seq: t.MalType[]): t.MalType {
+  function first(seq: t.MalSeq): t.MalType {
     return seq.length === 0 ? t.NIL : seq[0];
   }
 
-  function rest(...seq: t.MalType[]): t.MalList {
+  function rest(seq: t.MalSeq): t.MalList {
     return seq.slice(1);
   }
 
@@ -175,7 +174,7 @@ namespace io {
   }
 
   function prn(...args: t.MalType[]) {
-    console.log(prStr(args));
+    console.log(prStr(...args));
     return t.NIL;
   }
 
