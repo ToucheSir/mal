@@ -3,7 +3,7 @@ import {MalType, MalFunction, MalList} from './types';
 
 export class Env {
   private data: Map<symbol, MalType>;
-  
+
   constructor(private outer: Env, binds?: symbol[], exprs?: MalType[]) {
     this.outer = outer;
     this.data = new Map();
@@ -12,7 +12,7 @@ export class Env {
 
     for (let i = 0; i < binds.length; i++) {
       if (binds[i] === Symbol.for('&')) {
-        this.set(binds[i+1], exprs.slice(i));
+        this.set(binds[i+1], MalList.of(...exprs.slice(i)));
         break;
       }
 

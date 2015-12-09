@@ -5,7 +5,8 @@ import {printString} from './printer';
 import {readString} from './reader';
 import {readFileSync} from 'fs';
 import {HasMeta} from "./types";
-
+import {map as mapIter} from './itertools';
+import {isSequential} from "./types";
 
 const coreNS: Map<symbol, t.MalFunction> = new Map();
 
@@ -37,64 +38,55 @@ namespace math {
 }
 
 namespace seq {
-  function isEmpty(l: t.MalList): boolean {
+  function isEmpty(l: t.MalSeq): boolean {
     return l.length === 0;
   }
 
-  function count(l: t.MalList): number {
+  function count(l: t.MalSeq): number {
     return l === t.NIL ? 0 : l.length;
   }
 
   function cons(a: t.MalType, l: t.MalSeq): t.MalList {
-    return [a].concat(l);
+    return l.cons(a);
   }
 
   function conj(l: t.MalSeq, ...args: t.MalType[]): t.MalSeq {
-    if (t.isVector(l)) {
-      return t.createVector(...l, ...args);
-    }
-
-    const res = l.slice();
-    for (const val of args) {
-      res.unshift(val);
-    }
-    return res;
+    return l.conj(...args);
   }
 
   function concat(...args: t.MalSeq[]): t.MalList {
-    return args.reduce((acc, l) => acc.concat(l), []);
+    // TODO remove cast escape hatch
+    return <t.MalList>args.reduce((acc, l) => acc.concat(l), new t.MalList());
   }
 
   function nth(seq: t.MalSeq, index: number): t.MalType {
-    const s = seq;
-    const i = index;
-
-    if (i < 0 || i >= s.length) {
-      throw new Error(`index ${i} out of range`);
-    }
-    return s[i];
+    return seq.nth(index);
   }
 
   function first(seq: t.MalSeq): t.MalType {
-    return seq.length === 0 ? t.NIL : seq[0];
+    return seq.first();
   }
 
   function rest(seq: t.MalSeq): t.MalList {
-    return seq.slice(1);
+    return seq.rest();
   }
 
   function apply(func: t.MalFunction, ...args: t.MalType[]): t.MalType {
-    const last = args[args.length - 1];
-    return func.fn(...args.slice(0, -1).concat(last));
+    const last = args.pop();
+    if (t.isSequential(last)) {
+      return func.fn(...args, ...last);
+    }
+
+    throw new Error('apply called with non-sequence argument');
   }
 
   function map(func: t.MalFunction, seq: t.MalSeq): t.MalList {
-    return seq.map<t.MalType>(v => func.fn(v));
+    return t.MalList.of(...mapIter(v => func.fn(v), seq));
   }
 
-  addCoreFn('list', (...args) => args);
+  addCoreFn('list', t.MalList.of);
   addCoreFn('list?', t.isList);
-  addCoreFn('vector', t.createVector);
+  addCoreFn('vector', t.MalVector.of);
   addCoreFn('vector?', t.isVector);
 
   addCoreFn('empty?', isEmpty);
@@ -131,9 +123,11 @@ namespace cmp {
 
   function equals(a: t.MalType, b: t.MalType): boolean {
     if (t.isSequential(a) && t.isSequential(b)) {
-      return a.length === b.length && a.every((elem: t.MalType, i: number) => equals(elem, b[i]));
+      return a.equals(b, equals);
     } else if (t.isMap(a) && t.isMap(b)) {
       return mapEquals(a, b);
+    } else if (t.isKeyword(a) && t.isKeyword(b)) {
+      return a.toStringKey() === b.toStringKey()
     } else if (typeof a === typeof b) {
       return a === b;
     }
@@ -204,51 +198,55 @@ namespace err {
   addCoreFn('throw', throwErr);
 }
 
+
 namespace map {
   function toMap(...args: t.MalType[]): t.MalHashMap {
     const res: t.MalMap = new Map();
 
     for (let i = 0; i < args.length - 1; i += 2) {
-      res.set(args[i] as string, args[i + 1]);
+      res.set(t.objToKey(args[i]), args[i + 1]);
     }
 
     return res;
   }
 
-  function assoc(...args: t.MalType[]): t.MalHashMap {
-    const res = new Map((args[0] as t.MalMap).entries());
+  function assoc(m: t.MalMap, ...args: t.MalType[]): t.MalHashMap {
+    const res = new Map(m.entries());
 
-    for (let i = 1; i < args.length - 1; i += 2) {
-      res.set(args[i] as string, args[i + 1]);
+    for (let i = 0; i < args.length - 1; i += 2) {
+      res.set(t.objToKey(args[i]), args[i + 1]);
     }
 
     return res;
   }
 
-  function dissoc(...args: t.MalType[]): t.MalHashMap {
-    const res = new Map((args[0] as t.MalMap).entries());
+  function dissoc(m: t.MalMap, ...args: t.MalType[]): t.MalHashMap {
+    const res = new Map(m.entries());
 
-    for (let i = 1; i < args.length; i++) {
-      res.delete(args[i] as string);
+    for (const key of args) {
+      res.delete(t.objToKey(key));
     }
 
     return res;
   }
 
-  function getFrom(m: t.MalType, k: string): t.MalType {
-    return t.isMap(m) && m.has(k) ? m.get(k) : t.NIL;
+  function getFrom(m: t.MalType, k: t.MalType): t.MalType {
+    const key = t.objToKey(k);
+    //console.log([m, k, key]);
+    return t.isMap(m) && m.has(key) ? m.get(key) : t.NIL;
   }
 
-  function containsKey(m: t.MalHashMap, k: string): boolean {
-    return m.has(k);
+  function containsKey(m: t.MalHashMap, k: t.MalType): boolean {
+    const key = t.objToKey(k);
+    return m.has(key);
   }
 
   function keys(m: t.MalHashMap): t.MalSeq {
-    return Array.from(m.keys());
+    return t.MalList.of(...mapIter(k => k[0] === t.KEYWORD_PREFIX ? new t.MalKeyword(k.slice(1)) : k, m.keys()));
   }
 
   function vals(m: t.MalHashMap): t.MalSeq {
-    return Array.from(m.values());
+    return t.MalList.of(...m.values());
   }
 
   addCoreFn('hash-map', toMap);
@@ -262,12 +260,17 @@ namespace map {
 }
 
 namespace meta {
-  function cloneObj<T>(o: T|T[]|Map<string, T>): typeof o {
+  // FIXME this is wrong for the new collections
+  function cloneObj(o: t.MalType): typeof o {
     if (typeof o !== 'object') {
       return o;
     }
-    const res = Array.isArray(o) ?
-        o.slice() : o instanceof Map ?
+
+    if (t.isSequential(o)) {
+      return o.clone();
+    }
+
+    const res = o instanceof Map ?
         new Map(o.entries()) :
         Object.assign({}, o);
     for (const sym of Object.getOwnPropertySymbols(o)) {

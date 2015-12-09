@@ -6,11 +6,11 @@ import {
     MalList,
     MalVector,
     createSymbol,
-    createVector,
     isString,
-    mapKeyFromString
+    isKeyword,
+    createKeyword,
+    objToKey
 } from './types';
-import {createKeyword} from "./types";
 
 export function readString(str: string) {
   return readForm(new Reader(tokenizer(str)));
@@ -87,11 +87,11 @@ function readForm(reader: Reader): MalType {
     case '~':
     case '~@':
     case '@':
-      return [READER_MAPPINGS[reader.next()], readForm(reader)];
+      return new MalList(READER_MAPPINGS[reader.next()], readForm(reader));
     case '^':
       const metaSym = READER_MAPPINGS[reader.next()];
       const meta = readForm(reader);
-      return [metaSym, readForm(reader), meta];
+      return new MalList(metaSym, readForm(reader), meta);
     default:
       return readAtom(reader);
   }
@@ -107,7 +107,7 @@ function readVector(reader: Reader): MalVector {
 
   if (!reader.eof() && reader.peek() === ']') {
     reader.next();
-    return createVector(...vec);
+    return MalVector.of(...vec);
   }
 
   throw new Error('expected \']\', got EOF');
@@ -121,8 +121,8 @@ function readHashMap(reader: Reader): MalHashMap {
     const key = readForm(reader);
     const value = readForm(reader);
 
-    if (isString(key)) {
-      res.set(key, value);
+    if (isString(key) || isKeyword(key)) {
+      res.set(objToKey(key), value);
     }
   }
 
@@ -153,7 +153,7 @@ function readList(reader: Reader): MalList {
 
   if (!reader.eof() && reader.peek() === ')') {
     reader.next();
-    return list;
+    return MalList.of(...list);
   }
 
   throw new Error('expected \')\', got EOF');

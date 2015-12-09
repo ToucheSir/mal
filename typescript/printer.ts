@@ -19,6 +19,7 @@ import {
     isAtom,
     isVector,
     isKeyword,
+    MalKeyword,
     MalSeq
 } from './types';
 import {map, join} from './itertools';
@@ -28,12 +29,8 @@ function printHashMap(m: MalHashMap, readable?: boolean) {
 }
 
 function joinEntry(kv: [string, MalType], readable?: boolean): string {
-  if (kv[0][0] === KEYWORD_PREFIX) {
-    kv[0] = ':' + kv[0].slice(1);
-  } else {
-    kv[0] = `"${kv[0]}"`;
-  }
-  return `${kv[0]} ${printString(kv[1], !!readable)}`;
+  let key: MalType = kv[0][0] === KEYWORD_PREFIX ? new MalKeyword(kv[0].slice(1)) : kv[0];
+  return `${printString(key, !!readable)} ${printString(kv[1], !!readable)}`;
 }
 
 function malEscapeStr(str: string): string {
@@ -43,7 +40,7 @@ function malEscapeStr(str: string): string {
 const LIST_BRACES: [string, string] = ['(', ')'];
 const VECTOR_BRACES: [string, string] = ['[', ']'];
 export function printSeq(s: MalSeq, braces: [string, string], readable?: boolean): string {
-  return braces[0] + s.map<string>(x => printString(x, !!readable)).join(' ') + braces[1];
+  return braces[0] + Array.from(s, x => printString(x, !!readable)).join(' ') + braces[1];
 }
 
 export function printString(obj: MalType, readable?: boolean): string {
@@ -51,11 +48,9 @@ export function printString(obj: MalType, readable?: boolean): string {
     return String(obj);
   } else if (isSymbol(obj)) {
     return Symbol.keyFor(obj);
+  } else if (isKeyword(obj)) {
+    return obj.toString();
   } else if (isString(obj)) {
-    if (isKeyword(obj)) {
-      return ':' + obj.slice(1);
-    }
-
     if (readable) {
       return `"${malEscapeStr(obj)}"`;
     }
