@@ -198,7 +198,6 @@ namespace err {
   addCoreFn('throw', throwErr);
 }
 
-
 namespace map {
   function toMap(...args: t.MalType[]): t.MalHashMap {
     const res: t.MalMap = new Map();
@@ -312,16 +311,29 @@ namespace atom {
   addCoreFn('swap!', swap);
 }
 
-addCoreFn('nil?', x => x === t.NIL);
-addCoreFn('true?', x => x === true);
-addCoreFn('false?', x => x === false);
+namespace primitives {
+  addCoreFn('nil?', x => x === t.NIL);
+  addCoreFn('true?', x => x === true);
+  addCoreFn('false?', x => x === false);
 
-addCoreFn('symbol', t.createSymbol);
-addCoreFn('symbol?', t.isSymbol);
+  addCoreFn('symbol', t.createSymbol);
+  addCoreFn('symbol?', t.isSymbol);
 
-addCoreFn('keyword', t.createKeyword);
-addCoreFn('keyword?', t.isKeyword);
+  addCoreFn('keyword', t.createKeyword);
+  addCoreFn('keyword?', t.isKeyword);
+}
 
-addCoreFn('readline', readline);
+namespace performance {
+  function timeMs() {
+    const hrtimestamp = process.hrtime();
+    return hrtimestamp[0] * 1e3 + hrtimestamp[1] / 1e6;
+  }
+
+  addCoreFn('time-ms', timeMs);
+}
+
+namespace repl {
+  addCoreFn('readline', readline);
+}
 
 export default coreNS;
