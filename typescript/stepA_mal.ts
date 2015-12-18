@@ -198,6 +198,7 @@ function EVAL(ast: MalType, env: Env): MalType {
                     break;
                   }
                 }
+                throw new Error(`'${printString((<MalSeq>ast).first(), true)}' is not a function`);
               }
           }
         }
@@ -269,35 +270,6 @@ if (process.argv && process.argv.length > 2) {
   replEnv.set(createSymbol('*ARGV*'), MalList.of(...process.argv.slice(3)));
   rep(`(load-file "${process.argv[2]}")`);
 }
-
-//rep('(map? (with-meta {"abc" 123} {"a" 1}))');
-/*
- rep(`
- (def! eval-ast (fn* [ast env] (do
- ;;(do (prn "eval-ast" ast "/" (keys env)) )
- (cond
- (symbol? ast) (or (get env (str ast))
- (throw (str ast " not found")))
-
- (list? ast)   (map (fn* [exp] (EVAL exp env)) ast)
-
- (vector? ast) (apply vector (map (fn* [exp] (EVAL exp env)) ast))
-
- (map? ast)    (apply hash-map
- (apply concat
- (map (fn* [k] [k (EVAL (get ast k) env)])
- (keys ast))))
-
- "else"        ast))))
- `);
- rep(`
- (def! repl-env {"+" +
- "-" -
- "*" *
- "/" /})
- `);
- rep(`(eval-ast [1] repl-env)`);
- */
 
 const running = true;
 while (running) {
