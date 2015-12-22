@@ -36,3 +36,17 @@ export function* map<A,B>(fn: (arg: A) => B, iter: Iterable<A>) {
   }
 }
 
+export function* interpose<A,B>(arg: A, iter: Iterable<B>): IterableIterator<any> {
+  const items = iter[Symbol.iterator]();
+  let elem: IteratorResult<B>;
+
+  if (!(elem = items.next()).done) {
+    yield elem.value;
+  }
+
+  for (elem = items.next(); !elem.done; elem = items.next()) {
+    yield arg;
+    yield elem.value;
+  }
+}
+

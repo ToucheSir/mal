@@ -1,0 +1,95 @@
+(load-file "interpreter.mal")
+(def! defer-traverse (fn* [env]
+                          (fn* [arg]
+                               (traverse arg env))))
+
+(def! KW-PREFIX "_kw_")
+
+(def! OUTPUT (fn* [source]
+                (if (sequential? source)
+                  (apply str (map OUTPUT source))
+                  (print (str source)))))
+
+(def! emit-keyword (fn* [kw]
+                        (EMIT (str KW-PREFIX kw))))
+
+(def! emit-symbol (fn* [sym]
+                       (EMIT (str "createSymbol('" sym "')"))))
+
+(def! emit-map (fn* [m]
+                    (concat (list "hashmap(")
+                            (interpose ", " (map EMIT (apply concat (zip2 (keys m) (vals m)))))
+                            (list ")"))))
+
+(def! zip2 (fn* [seqA seqB]
+                (if (or (empty? seqA) (empty? seqB))
+                  (list)
+                  (cons [(first seqA) (first seqB)] (zip2 (rest seqA) (rest seqB))))))
+
+(def! emit-list (fn* [l] (concat (list "list(")
+                                 (interpose ", " (map EMIT l))
+                                 (list ")"))))
+
+(def! emit-vector (fn* [v] (concat (list "vector(")
+                                   (interpose ", " (map EMIT v))
+                                   (list ")"))))
+
+(def! EMIT (fn* [ast]
+                (cond
+                  (list? ast) (emit-list ast)
+                  (vector? ast) (emit-vector ast)
+                  (map? ast) (emit-map ast)
+                  (keyword? ast) (emit-keyword ast)
+                  (symbol? ast) (emit-symbol ast)
+                  "else" (str ast))))
+
+(def! preprocess (fn* [ast]
+                    ast))
+
+(def! gencode (fn* [ast]
+                   (do (OUTPUT (EMIT ast)) (println))))
+
+;; repl
+(def! repl-env (new-env))
+(def! rep (fn* [strng]
+               (PRINT (EVAL (READ strng) repl-env))))
+
+;; compilation
+(def! compile-js (fn* [string]
+                   (gencode (preprocess (READ string) repl-env))))
+
+
+;; core.mal: defined directly using mal
+(map (fn* [data] (env-set repl-env (nth data 0) (nth data 1))) core_ns)
+(env-set repl-env 'eval (fn* [ast] (EVAL ast repl-env)))
+(env-set repl-env '*ARGV* (rest *ARGV*))
+
+;; core.mal: defined using the new language itself
+(rep (str "(def! *host-language* \"" *host-language* "-mal\")"))
+(rep "(def! not (fn* [a] (if a false true)))")
+(rep "(def! load-file (fn* (f) (eval (read-string (str \"(do \" (slurp f) \")\")))))")
+(rep "(defmacro! cond (fn* (& xs) (if (> (count xs) 0) (list 'if (first xs) (if (> (count xs) 1) (nth xs 1) (throw \"odd number of forms to cond\")) (cons 'cond (rest (rest xs)))))))")
+(rep "(defmacro! or (fn* (& xs) (if (empty? xs) nil (if (= 1 (count xs)) (first xs) `(let* (or_FIXME ~(first xs)) (if or_FIXME or_FIXME (or ~@(rest xs))))))))")
+
+;; repl loop
+(def! repl-loop (fn* []
+                     (let* [line (readline "mal-user> ")]
+                       (if line
+                         (do
+                           (if (not (= "" line))
+                             (try*
+                               (do (println (rep line))
+                                   (println (compile-js line)))
+                               (catch* exc
+                                       (println "Uncaught exception:" exc))))
+                           (repl-loop))))))
+
+(def! -main (fn* [& args]
+                 (if (> (count args) 0)
+                   (do
+                     (compile-js (first args))
+                     (rep (str "(load-file \"" (first args) "\")")))
+                   (do
+                     (rep "(println (str \"Mal [\" *host-language* \"]\"))")
+                     (repl-loop)))))
+(apply -main *ARGV*)

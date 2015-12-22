@@ -1,0 +1,14 @@
+;; Testing trivial macros
+(defmacro! one (fn* () 1))
+
+(defmacro! two (fn* () 2))
+
+
+;; Testing unless macros
+(defmacro! unless (fn* (pred a b) `(if ~pred ~b ~a)))
+
+(defmacro! unless2 (fn* (pred a b) `(if (not ~pred) ~a ~b)))
+
+
+
+

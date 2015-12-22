@@ -5,7 +5,7 @@ import {printString} from './printer';
 import {readString} from './reader';
 import {readFileSync} from 'fs';
 import {HasMeta} from "./types";
-import {map as mapIter} from './itertools';
+import {map as mapIter, interpose as interposeIter} from './itertools';
 import {isSequential} from "./types";
 
 const coreNS: Map<symbol, t.MalFunction> = new Map();
@@ -84,6 +84,10 @@ namespace seq {
     return t.MalList.of(...mapIter(v => func.fn(v), seq));
   }
 
+  function interpose(arg: t.MalType, seq: t.MalSeq): t.MalList {
+    return t.MalList.of(...interposeIter(arg, seq));
+  }
+
   addCoreFn('list', t.MalList.of);
   addCoreFn('list?', t.isList);
   addCoreFn('vector', t.MalVector.of);
@@ -102,6 +106,7 @@ namespace seq {
 
   addCoreFn('apply', apply);
   addCoreFn('map', map);
+  addCoreFn('interpose', interpose);
 
   addCoreFn('sequential?', t.isSequential);
 }
@@ -177,6 +182,11 @@ namespace io {
     return t.NIL;
   }
 
+  function print(...args: t.MalType[]) {
+    process.stdout.write(args.map<string>(x => printString(x, false)).join(' '));
+    return t.NIL;
+  }
+
   function slurp(fileName: string): string {
     return readFileSync(fileName, 'utf-8');
   }
@@ -185,6 +195,7 @@ namespace io {
   addCoreFn('str', str);
   addCoreFn('prn', prn);
   addCoreFn('println', println);
+  addCoreFn('print', print);
 
   addCoreFn('read-string', readString);
   addCoreFn('slurp', slurp);
