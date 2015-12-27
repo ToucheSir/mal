@@ -55,8 +55,7 @@ namespace seq {
   }
 
   function concat(...args: t.MalSeq[]): t.MalList {
-    // TODO remove cast escape hatch
-    return <t.MalList>args.reduce((acc, l) => acc.concat(l), new t.MalList());
+    return args.reduce<t.MalList>((acc, l) => acc.concat(l), new t.MalList());
   }
 
   function nth(seq: t.MalSeq, index: number): t.MalType {
