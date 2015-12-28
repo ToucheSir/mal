@@ -55,7 +55,7 @@
                                   (if (= 'catch* (first (nth ast 1)))
                                     ["\n} catch (" (EMIT (nth (nth ast 1) 1) env)
                                      ") {\nreturn " (EMIT (nth (nth ast 1) 2) env)])
-                                  ["\n}\n}())"])))
+                                  ["\n}\n})()"])))
 
 (def! emit-do-statements (fn* [ast env]
                               (if (empty? (rest ast))
@@ -104,7 +104,7 @@
                                                  (concat ["(() => {\n"]
                                                          (emit-bindings defs env)
                                                          ["return (" ret ")\n"]
-                                                         ["}())"]))
+                                                         ["})()"]))
                                  (= 'quote sym) (cond
                                                   (list? (first args))
                                                   (EMIT (cons 'list (first args)) env)
@@ -123,7 +123,7 @@
                                  ;; a comma expression instead?
                                  (= 'do sym) (concat ["(() => {\n"]
                                                      (emit-do-statements (rest l) env)
-                                                     ["}())"])
+                                                     ["})()"])
                                  (= 'if sym) ["(" (EMIT (nth l 1) env) ")"
                                               " ? (" (EMIT (nth l 2) env) ")"
                                               " : (" (EMIT (if (> (count l) 3)
@@ -134,7 +134,7 @@
                                  (is-macro-call l env) (EMIT (MACROEXPAND l env) env)
                                  ;; FIXME better module/file management
                                  (= 'load-file sym)
-                                 (do (add-compilation-unit (nth l 1)))
+                                 (do (add-compilation-unit (nth l 1)) ["// load-file '" (nth l 1) "'"])
                                  "else" (concat [(EMIT sym env) "("]
                                                 (emit-args args env)
                                                 [")"])))))
@@ -152,7 +152,7 @@
                   "else" (pr-str ast))))
 
 (def! gencode (fn* [ast env]
-                   (do (OUTPUT (EMIT ast env)) (println))))
+                   (do (OUTPUT (EMIT ast env)) (println ";"))))
 
 ;; repl
 (def! repl-env (new-env))
