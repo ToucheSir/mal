@@ -40,7 +40,7 @@
 (def! MACROEXPAND (fn* [ast env]
                        (if (is-macro-call ast env)
                          (let* [mac (env-get env (first ast))
-                           expanded (MACROEXPAND (apply mac (rest ast)) env)]
+                                expanded (MACROEXPAND (apply mac (rest ast)) env)]
                            expanded)
                          ast)))
 
@@ -82,10 +82,10 @@
                                       (env-set env (nth ast 1) (EVAL (nth ast 2) env))
 
                                       (= 'let* a0)
-                                      (let* [let-env (new-env env)]
+                                      (let* [let_env (new-env env)]
                                         (do
-                                          (LET let-env (nth ast 1))
-                                          (EVAL (nth ast 2) let-env)))
+                                          (LET let_env (nth ast 1))
+                                          (EVAL (nth ast 2) let_env)))
 
                                       (= 'quote a0)
                                       (nth ast 1)

@@ -15,11 +15,11 @@
 (def! emit-keyword (fn* [kw env]
                         (EMIT (str KW-PREFIX kw) env)))
 
+(def! emit-args (fn* [args env]
+                     (interpose ", " (map (with-env EMIT env) args))))
+
 (def! emit-map (fn* [m env]
-                    (concat ["hashmap("]
-                            (interpose ", " (map (with-env EMIT env)
-                                                 (apply concat (zip2 (keys m) (vals m)))))
-                            [")"])))
+                    (EMIT (cons 'hash-map (apply concat (zip2 (keys m) (vals m)))) env)))
 
 (def! zip2 (fn* [seqA seqB]
                 (if (or (empty? seqA) (empty? seqB))
@@ -30,60 +30,87 @@
                          (if (>= (count bindings) 2)
                            (cons (concat ["var " (first bindings) "="]
                                          (EMIT (nth bindings 1) env)
-                                         ["\n"])
+                                         [";\n"])
                                  (emit-bindings (rest (rest bindings)) env))
                            (list))))
 
 (def! emit-quasiquote (fn* [form env]
-                           (do (println "form=" form)
-                               (if (do (not (is-pair form)))
-                                 (list 'quote form)
-                                 (cons 'concat (map (fn* [elem]
-                                                         (cond
-                                                           (not (is-pair elem)) (list 'list (list 'quote elem)) ; (list (quote elem))
-                                                           (= 'unquote (first elem)) (list 'list (nth elem 1)) ; (list elem)
-                                                           (= 'splice-unquote (first elem)) (nth elem 1)
-                                                           "else" (list 'list (list 'quote elem)))) ; (list (quote elem))
-                                                    form))))))
+                           (if (do (not (is-pair form)))
+                             (list 'quote form)
+                             (cons 'concat
+                                   (map (fn* [elem]
+                                             (cond
+                                               ; (list (quote elem))
+                                               (not (is-pair elem)) (list 'list (list 'quote elem))
+                                               ; (list elem)
+                                               (= 'unquote (first elem)) (list 'list (nth elem 1))
+                                               (= 'splice-unquote (first elem)) (nth elem 1)
+                                               ; (list (quote elem))
+                                               "else" (list 'list (list 'quote elem))))
+                                        form)))))
 
 (def! emit-try-catch (fn* [ast env]
-                          (concat ["try {\n"
+                          (concat ["(() => {try {\nreturn"
                                    (EMIT (first ast) env)]
                                   (if (= 'catch* (first (nth ast 1)))
-                                    ["\n} catch (" (EMIT (nth (nth ast 1) 1) env) ") {\n"
-                                     (EMIT (nth (nth ast 1) 2) env)])
-                                  ["\n}"])))
+                                    ["\n} catch (" (EMIT (nth (nth ast 1) 1) env)
+                                     ") {\nreturn " (EMIT (nth (nth ast 1) 2) env)])
+                                  ["\n}\n}())"])))
 
 (def! emit-do-statements (fn* [ast env]
                               (if (empty? (rest ast))
-                                ["return (" (EMIT (first ast) env) ")\n"]
-                                [(cons [(EMIT (first ast) env) "\n"]
+                                ["return (" (EMIT (first ast) env) ");\n"]
+                                [(cons [(EMIT (first ast) env) ";\n"]
                                        (emit-do-statements (rest ast) env))])))
+(def! emit-params (fn* [params env]
+                       (cond
+                         (empty? (rest params)) [(EMIT (first params) env)]
+                         (= '& (first params)) ["..." (EMIT (nth params 1) env)]
+                         "else" (concat [(EMIT (first params) env) ","]
+                                        (emit-params (rest params) env)))))
 
 (def! emit-function-decl (fn* [params body env]
                               (concat ["(("]
-                                      (interpose ", " (map (with-env EMIT env) params))
-                                      [") => {\n"
+                                      (emit-params params env)
+                                      ;(interpose ", " (map (with-env EMIT env) params))
+                                      [") => {\n return "
                                        (EMIT body env)
                                        "\n})"])))
+(def! emit-symbol (fn* [sym env]
+                       (let* [resolved (resolve-ns sym env)]
+                         (if (nil? resolved)
+                           sym
+                           ["mal." (resolve-ns sym env) "['" sym "']"]))))
 
+(def! resolve-ns (fn* [sym env]
+                      (let* [containing_env (env-find env sym)]
+                        (cond
+                          (= containing_env repl-env) "core"
+                          (= containing_env env) "user"
+                          "else" nil))))
 
 
 
 (def! emit-list (fn* [l env] (let* [sym (first l)
                                     args (rest l)]
                                (cond
-                                 (= 'def! sym) (concat ["var " (first args) "="]
-                                                       (EMIT (nth args 1) env))
+                                 (= 'def! sym) (let* [init_val (nth args 1)]
+                                                 ; TODO cleaner way to add symbols
+                                                 (do (env-set env (first args) (first args))
+                                                     [(emit-symbol (first args) env) "="
+                                                      (EMIT init_val env)]))
                                  (= 'let* sym) (let* [defs (first args)
                                                       ret (EMIT (nth args 1) env)]
                                                  (concat ["(() => {\n"]
                                                          (emit-bindings defs env)
                                                          ["return (" ret ")\n"]
                                                          ["}())"]))
-                                 (= 'quote sym) (if (list? (first args))
+                                 (= 'quote sym) (cond
+                                                  (list? (first args))
                                                   (EMIT (cons 'list (first args)) env)
-                                                  (EMIT (first args) env))
+                                                  (symbol? (first args))
+                                                  (EMIT (list 'symbol (str (first args))) env)
+                                                  "else" (EMIT (first args) env))
                                  (= 'quasiquote sym)
                                  (let* [qq (emit-quasiquote (first args) env)]
                                    (EMIT qq env))
@@ -97,21 +124,22 @@
                                  (= 'do sym) (concat ["(() => {\n"]
                                                      (emit-do-statements (rest l) env)
                                                      ["}())"])
-                                 (= 'if sym) ["(" (EMIT (nth l 1) env)
-                                              " ? " (EMIT (nth l 2) env)
-                                              " : " (EMIT (if (> (count l) 3)
+                                 (= 'if sym) ["(" (EMIT (nth l 1) env) ")"
+                                              " ? (" (EMIT (nth l 2) env) ")"
+                                              " : (" (EMIT (if (> (count l) 3)
                                                             (nth l 3)
-                                                            NIL)
-                                                          env)
-                                              ")"]
+                                                            nil)
+                                                          env) ")"]
                                  (= 'fn* sym) (emit-function-decl (nth l 1) (nth l 2) env)
-                                 "else" (concat [(str (EMIT sym env) "(")]
-                                                (interpose ", " (map (with-env EMIT env) args))
+                                 (is-macro-call l env) (EMIT (MACROEXPAND l env) env)
+                                 ;; FIXME better module/file management
+                                 (= 'load-file sym)
+                                 (do (add-compilation-unit (nth l 1)))
+                                 "else" (concat [(EMIT sym env) "("]
+                                                (emit-args args env)
                                                 [")"])))))
 
-(def! emit-vector (fn* [v env] (concat ["vector("]
-                                   (interpose ", " (map (with-env EMIT env) v))
-                                   [")"])))
+(def! emit-vector (fn* [v env] (EMIT (cons 'vector v) env)))
 
 (def! EMIT (fn* [ast env]
                 (cond
@@ -119,10 +147,9 @@
                   (vector? ast) (emit-vector ast env)
                   (map? ast) (emit-map ast env)
                   (keyword? ast) (emit-keyword ast env)
+                  (symbol? ast) (emit-symbol ast env)
+                  (nil? ast) "null"
                   "else" (pr-str ast))))
-
-(def! preprocess (fn* [ast]
-                    ast))
 
 (def! gencode (fn* [ast env]
                    (do (OUTPUT (EMIT ast env)) (println))))
@@ -132,10 +159,15 @@
 (def! rep (fn* [strng]
                (PRINT (EVAL (READ strng) repl-env))))
 
-;; compilation
-(def! compile-js (fn* [string]
-                   (gencode (preprocess (READ string) repl-env) repl-env)))
+;; all non-core defines go here
+(def! user-env (new-env repl-env))
 
+;; compilation
+(def! compile-js (fn* [string env]
+                   (gencode (READ string) env)))
+
+(def! add-compilation-unit (fn* [file]
+                                (compile-js (str "(do" (slurp file) ")") user-env)))
 
 ;; core.mal: defined directly using mal
 (map (fn* [data] (env-set repl-env (nth data 0) (nth data 1))) core_ns)
@@ -148,6 +180,7 @@
 (rep "(def! load-file (fn* (f) (eval (read-string (str \"(do \" (slurp f) \")\")))))")
 (rep "(defmacro! cond (fn* (& xs) (if (> (count xs) 0) (list 'if (first xs) (if (> (count xs) 1) (nth xs 1) (throw \"odd number of forms to cond\")) (cons 'cond (rest (rest xs)))))))")
 (rep "(defmacro! or (fn* (& xs) (if (empty? xs) nil (if (= 1 (count xs)) (first xs) `(let* (or_FIXME ~(first xs)) (if or_FIXME or_FIXME (or ~@(rest xs))))))))")
+
 
 ;; repl loop
 (def! repl-loop (fn* []
@@ -166,7 +199,7 @@
 (def! -main (fn* [& args]
                  (if (> (count args) 0)
                    (do
-                     (compile-js (first args))
+                     (add-compilation-unit (first args))
                      (rep (str "(load-file \"" (first args) "\")")))
                    (do
                      (rep "(println (str \"Mal [\" *host-language* \"]\"))")
