@@ -109,7 +109,7 @@ type ListNode = {
   val?: MalType;
   next?: ListNode;
 };
-// FIXME unbreak lists
+
 export class MalList implements MalSeq, HasMeta {
   length: number = 0;
   private head: ListNode = null;
@@ -257,11 +257,13 @@ export interface MalFunction extends HasMeta {
   env?: Env;
   params?: symbol[];
   isMacro: boolean;
+  call: (thisArg: any, ...args: MalType[]) => MalType;
 }
 export function createMalFunction(fn: (...args: MalType[]) => MalType, ast?: MalType, params?: symbol[], env?: Env) {
   return {
     fn, ast, params, env,
-    isMacro: false
+    isMacro: false,
+    call: fn.call
   };
 }
 

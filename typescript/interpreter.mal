@@ -1,5 +1,10 @@
 (load-file "env.mal")
 (load-file "core.mal")
+(load-file "core_mal.mal")
+
+;; FIXME TODO HELP hacked-in "forward declarations". We need two-pass compilation.
+(def! EVAL "__fwd_decl__")
+;;
 
 ;; read
 (def! READ (fn* [strng]

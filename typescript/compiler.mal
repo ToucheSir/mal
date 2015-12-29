@@ -4,6 +4,11 @@
        (fn* [arg]
             (func arg env))))
 
+;; FIXME TODO HELP hacked-in "forward declarations". We need two-pass compilation.
+(def! repl-env "__fwd_decl__")
+(def! add-compilation-unit "__fwd_decl__")
+(def! EMIT "__fwd_decl__")
+;;
 
 (def! KW-PREFIX "_kw_")
 
@@ -50,7 +55,7 @@
                                         form)))))
 
 (def! emit-try-catch (fn* [ast env]
-                          (concat ["(() => {try {\nreturn"
+                          (concat ["(() => {\ntry {\nreturn "
                                    (EMIT (first ast) env)]
                                   (if (= 'catch* (first (nth ast 1)))
                                     ["\n} catch (" (EMIT (nth (nth ast 1) 1) env)
@@ -64,23 +69,25 @@
                                        (emit-do-statements (rest ast) env))])))
 (def! emit-params (fn* [params env]
                        (cond
-                         (empty? (rest params)) [(EMIT (first params) env)]
-                         (= '& (first params)) ["..." (EMIT (nth params 1) env)]
-                         "else" (concat [(EMIT (first params) env) ","]
-                                        (emit-params (rest params) env)))))
+                         (empty? params) (list)
+                         (= '& (first params)) [["..." (EMIT (nth params 1) env)]]
+                         "else" (cons (EMIT (first params) env)
+                                      (concat (if (empty? (rest params)) [] [","])
+                                              (emit-params (rest params) env))))))
 
 (def! emit-function-decl (fn* [params body env]
-                              (concat ["(("]
-                                      (emit-params params env)
-                                      ;(interpose ", " (map (with-env EMIT env) params))
-                                      [") => {\n return "
-                                       (EMIT body env)
-                                       "\n})"])))
-(def! emit-symbol (fn* [sym env]
-                       (let* [resolved (resolve-ns sym env)]
-                         (if (nil? resolved)
-                           sym
-                           ["mal." (resolve-ns sym env) "['" sym "']"]))))
+                              (let* [prms (emit-params params env)]
+                                (concat ["(("]
+                                        prms
+                                        [") => {\n"]
+                                        (apply concat
+                                               (map (fn* [p] (if (sequential? p)
+                                                               [(nth p 1) "=" (EMIT (list 'list (nth p 1)) env) ";\n"]
+                                                               []))
+                                                    prms))
+                                        ["return "
+                                         (EMIT body env)
+                                         "\n})"]))))
 
 (def! resolve-ns (fn* [sym env]
                       (let* [containing_env (env-find env sym)]
@@ -89,7 +96,11 @@
                           (= containing_env env) "user"
                           "else" nil))))
 
-
+(def! emit-symbol (fn* [sym env]
+                       (let* [resolved (resolve-ns sym env)]
+                         (if (nil? resolved)
+                           sym
+                           ["mal." (resolve-ns sym env) "['" sym "']"]))))
 
 (def! emit-list (fn* [l env] (let* [sym (first l)
                                     args (rest l)]
@@ -135,8 +146,8 @@
                                  ;; FIXME better module/file management
                                  (= 'load-file sym)
                                  (do (add-compilation-unit (nth l 1)) ["// load-file '" (nth l 1) "'"])
-                                 "else" (concat [(EMIT sym env) "("]
-                                                (emit-args args env)
+                                 "else" (concat [(EMIT sym env) ".call("]
+                                                (emit-args (cons nil args) env)
                                                 [")"])))))
 
 (def! emit-vector (fn* [v env] (EMIT (cons 'vector v) env)))
@@ -152,7 +163,8 @@
                   "else" (pr-str ast))))
 
 (def! gencode (fn* [ast env]
-                   (do (OUTPUT (EMIT ast env)) (println ";"))))
+                   (do (OUTPUT (EMIT ast env))
+                       (println ";"))))
 
 ;; repl
 (def! repl-env (new-env))
@@ -199,9 +211,11 @@
 (def! -main (fn* [& args]
                  (if (> (count args) 0)
                    (do
+                     (println "'use strict';\nvar mal = require('./prelude');\n")
                      (add-compilation-unit (first args))
                      (rep (str "(load-file \"" (first args) "\")")))
                    (do
                      (rep "(println (str \"Mal [\" *host-language* \"]\"))")
                      (repl-loop)))))
+(apply -main *ARGV*)
 (apply -main *ARGV*)

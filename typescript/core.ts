@@ -73,14 +73,20 @@ namespace seq {
   function apply(func: t.MalFunction, ...args: t.MalType[]): t.MalType {
     const last = args.pop();
     if (t.isSequential(last)) {
-      return func.fn(...args, ...last);
+      if (func.fn) {
+        return func.fn(...args, ...last);
+      }
+      return func.call(null, ...args, ...last);
     }
 
     throw new Error('apply called with non-sequence argument');
   }
 
   function map(func: t.MalFunction, seq: t.MalSeq): t.MalList {
-    return t.MalList.of(...mapIter(v => func.fn(v), seq));
+    if (func.fn) {
+      return t.MalList.of(...mapIter(v => func.fn(v), seq));
+    }
+    return t.MalList.of(...mapIter(v => func.call(null, v), seq));
   }
 
   function interpose(arg: t.MalType, seq: t.MalSeq): t.MalList {
@@ -311,7 +317,10 @@ namespace atom {
   }
 
   function swap(a: t.MalAtom, f: t.MalFunction, ...args: t.MalType[]): t.MalType {
-    return reset(a, f.fn(a.value, ...args));
+    if (f.fn) {
+      return reset(a, f.fn(a.value, ...args));
+    }
+    return reset(a, f.call(null, a.value, ...args));
   }
 
   addCoreFn('atom', t.createAtom);
