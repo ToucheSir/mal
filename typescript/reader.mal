@@ -1,0 +1,4 @@
+(load-file "core_macros.mal")
+
+(defn! read-str [st]
+  (read-string st))

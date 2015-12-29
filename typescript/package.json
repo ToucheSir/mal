@@ -3,7 +3,7 @@
     "ffi": "^2.0.0"
   },
   "scripts": {
-    "start": "node --harmony stepA_mal.js compiler.mal",
-    "debug": "node-debug --nodejs --harmony stepA_mal.js compiler.mal"
+    "start": "node --harmony mal_interp.js compiler.mal",
+    "debug": "node-debug --nodejs --harmony mal_interp.js compiler.mal"
   }
 }
